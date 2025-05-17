@@ -14,6 +14,8 @@ const DeckSchema: Schema = new Schema({
   description: { type: String },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
+},{
+  collection: 'Decks' // Explicitly set the collection name here
 });
 
 // Middleware to update `updatedAt` field before saving
@@ -22,4 +24,4 @@ DeckSchema.pre<IDeck>('save', function (next) {
   next();
 });
 
-export default mongoose.model<IDeck>('Deck', DeckSchema);
+export default mongoose.model<IDeck>('Decks', DeckSchema);

@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { toast } from 'sonner';
 
@@ -6,6 +5,7 @@ interface User {
   id: string;
   email: string;
   name: string;
+  token?: string; // Add token to User interface
 }
 
 interface AuthContextType {
@@ -30,36 +30,68 @@ interface AuthProviderProps {
   children: React.ReactNode;
 }
 
+const API_URL = 'http://localhost:5001/api/auth'; // Adjust if your backend URL is different
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for saved user in localStorage
+    const token = localStorage.getItem('flashcardToken');
     const savedUser = localStorage.getItem('flashcardUser');
-    if (savedUser) {
+    if (token && savedUser) {
       try {
-        setUser(JSON.parse(savedUser));
+        const parsedUser = JSON.parse(savedUser);
+        setUser({ ...parsedUser, token });
+        // Optionally, you could add a request here to verify the token with the backend
+        // and fetch fresh user data e.g., fetchUserProfile(token);
       } catch (error) {
         console.error('Failed to parse saved user', error);
         localStorage.removeItem('flashcardUser');
+        localStorage.removeItem('flashcardToken');
       }
     }
     setLoading(false);
   }, []);
 
-  const signUp = async (email: string, password: string, name: string) => {
-    // Mock sign up functionality
+  const signUp = async (email: string, password: string, username: string) => {
     setLoading(true);
     try {
-      // In a real app, this would be an API call
-      const newUser = { id: crypto.randomUUID(), email, name };
+      const response = await fetch(`${API_URL}/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, email, password }),
+      });
+
+      // Check if the response is JSON before trying to parse it
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const responseText = await response.text();
+        console.error('Server did not return JSON. Response text:', responseText);
+        throw new Error('Server error: Did not return JSON. Check console for details.');
+      }
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to sign up');
+      }
+
+      // Assuming the backend returns user and token upon successful registration
+      const newUser = { id: data.user.id, email: data.user.email, name: data.user.name, token: data.token };
       setUser(newUser);
-      localStorage.setItem('flashcardUser', JSON.stringify(newUser));
+      localStorage.setItem('flashcardUser', JSON.stringify({ id: data.user.id, email: data.user.email, name: data.user.name }));
+      localStorage.setItem('flashcardToken', data.token);
       toast.success('Account created successfully!');
-    } catch (error) {
+    } catch (error: unknown) { // Changed from any to unknown
       console.error('Sign up error', error);
-      toast.error('Failed to create account');
+      if (error instanceof Error) {
+        toast.error(error.message || 'Failed to create account');
+      } else {
+        toast.error('An unexpected error occurred during sign up');
+      }
       throw error;
     } finally {
       setLoading(false);
@@ -67,28 +99,35 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const logIn = async (email: string, password: string) => {
-    // Mock login functionality
     setLoading(true);
     try {
-      // In a real app, this would be an API call
-      // For demo, we'll just pretend the login worked with some basic validation
-      if (!email || !password) {
-        throw new Error('Email and password are required');
+      const response = await fetch(`${API_URL}/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to log in');
       }
 
-      // Create a mock user
-      const user = { 
-        id: crypto.randomUUID(), 
-        email,
-        name: email.split('@')[0]
-      };
-      
-      setUser(user);
-      localStorage.setItem('flashcardUser', JSON.stringify(user));
+      // Assuming the backend returns user and token
+      const loggedInUser = { id: data.user.id, email: data.user.email, name: data.user.name, token: data.token }; 
+      setUser(loggedInUser);
+      localStorage.setItem('flashcardUser', JSON.stringify({ id: data.user.id, email: data.user.email, name: data.user.name }));
+      localStorage.setItem('flashcardToken', data.token);
       toast.success('Logged in successfully!');
-    } catch (error) {
+    } catch (error: unknown) { // Changed from any to unknown
       console.error('Login error', error);
-      toast.error('Failed to log in');
+      if (error instanceof Error) {
+        toast.error(error.message || 'Failed to log in');
+      } else {
+        toast.error('An unexpected error occurred during login');
+      }
       throw error;
     } finally {
       setLoading(false);
@@ -98,6 +137,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const logOut = () => {
     setUser(null);
     localStorage.removeItem('flashcardUser');
+    localStorage.removeItem('flashcardToken');
     toast.info('Logged out successfully');
   };
 

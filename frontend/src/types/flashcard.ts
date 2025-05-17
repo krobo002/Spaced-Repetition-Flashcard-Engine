@@ -1,4 +1,3 @@
-
 import { CardReviewData } from "../utils/spaceRepAlgorithm";
 
 export interface Flashcard {
@@ -12,6 +11,7 @@ export interface Flashcard {
 export interface Deck {
   id: string;
   name: string;
+  description?: string; // Add optional description
   userId: string;
   createdAt: Date;
   updatedAt: Date;

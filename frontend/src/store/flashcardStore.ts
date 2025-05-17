@@ -71,10 +71,11 @@ export const useDecks = (userId: string) => {
   }, [decks, userId]);
 
   // Create a new deck
-  const createDeck = useCallback((name: string) => {
+  const createDeck = useCallback((name: string, description?: string) => { // Add description parameter
     const newDeck: Deck = {
       id: crypto.randomUUID(),
       name,
+      description, // Add description
       userId,
       createdAt: new Date(),
       updatedAt: new Date(),

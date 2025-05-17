@@ -14,13 +14,7 @@ export const registerUser = async (req: Request, res: Response) => { // Removed 
   try {
     let user = await User.findOne({ email });
     if (user) {
-      res.status(400).json({ msg: 'User already exists' });
-      return;
-    }
-
-    user = await User.findOne({ username });
-    if (user) {
-      res.status(400).json({ msg: 'Username already taken' });
+      res.status(400).json({ message: 'User already exists' });
       return;
     }
 
@@ -52,12 +46,20 @@ export const registerUser = async (req: Request, res: Response) => { // Removed 
       { expiresIn: '5h' }, // Token expires in 5 hours
       (err, token) => {
         if (err) throw err;
-        res.json({ token });
+        // Send token and user info
+        res.json({ 
+          token,
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.username // Assuming username is to be used as name
+          }
+        });
       }
     );
   } catch (err: any) {
     console.error(err.message);
-    res.status(500).send('Server error');
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -68,13 +70,13 @@ export const loginUser = async (req: Request, res: Response) => { // Removed nex
   try {
     const user = await User.findOne({ email });
     if (!user) {
-      res.status(400).json({ msg: 'Invalid Credentials' });
+      res.status(400).json({ message: 'User email not found' });
       return;
     }
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
-      res.status(400).json({ msg: 'Invalid Credentials' });
+      res.status(400).json({ message: 'Wrong password' });
       return;
     }
 
@@ -95,12 +97,20 @@ export const loginUser = async (req: Request, res: Response) => { // Removed nex
       { expiresIn: '5h' },
       (err, token) => {
         if (err) throw err;
-        res.json({ token });
+        // Send token and user info
+        res.json({
+          token,
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.username // Assuming username is to be used as name
+          }
+        });
       }
     );
   } catch (err: any) {
     console.error(err.message);
-    res.status(500).send('Server error');
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -109,17 +119,17 @@ export const getUserProfile = async (req: AuthRequest, res: Response) => { // Re
   try {
     // req.user is assigned by the authMiddleware
     if (!req.user) {
-        res.status(401).json({ msg: 'User not authenticated' });
+        res.status(401).json({ message: 'User not authenticated' });
         return;
     }
     const user = await User.findById(req.user.id).select('-passwordHash');
     if (!user) {
-        res.status(404).json({ msg: 'User not found' });
+        res.status(404).json({ message: 'User not found' });
         return;
     }
     res.json(user);
   } catch (err: any) {
     console.error(err.message);
-    res.status(500).send('Server error');
+    res.status(500).json({ message: 'Server error' });
   }
 };
