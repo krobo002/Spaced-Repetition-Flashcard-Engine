@@ -1,5 +1,4 @@
-
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Deck, Flashcard, StudySessionStats, DeckStats, UserStats } from '../types/flashcard';
 import { processReview, ReviewQuality, isCardDue, CardReviewData } from '../utils/spaceRepAlgorithm';
@@ -19,11 +18,11 @@ const loadFromStorage = <T>(key: string, defaultValue: T): T => {
       
       // Convert string dates back to Date objects
       if (Array.isArray(parsedData)) {
-        parsedData.forEach((item: any) => {
-          if (item.createdAt) item.createdAt = new Date(item.createdAt);
-          if (item.updatedAt) item.updatedAt = new Date(item.updatedAt);
+        parsedData.forEach((item: Deck | Flashcard | StudySessionStats) => { // Type narrowed for item
+          if ('createdAt' in item && item.createdAt) item.createdAt = new Date(item.createdAt);
+          if ('updatedAt' in item && item.updatedAt) item.updatedAt = new Date(item.updatedAt);
           
-          if (item.reviewData) {
+          if ('reviewData' in item && item.reviewData) {
             if (item.reviewData.dueDate) {
               item.reviewData.dueDate = new Date(item.reviewData.dueDate);
             }
@@ -31,6 +30,7 @@ const loadFromStorage = <T>(key: string, defaultValue: T): T => {
               item.reviewData.lastReviewed = new Date(item.reviewData.lastReviewed);
             }
           }
+          // For StudySessionStats, startTime is already a Date object or undefined, handled by JSON parse
         });
       }
       
@@ -62,14 +62,16 @@ export const useDecks = (userId: string) => {
   // Save decks whenever they change
   useEffect(() => {
     if (userId) {
-      const allDecks = loadFromStorage<Deck[]>(DECKS_STORAGE_KEY, []);
-      const otherDecks = allDecks.filter(deck => deck.userId !== userId);
-      saveToStorage(DECKS_STORAGE_KEY, [...otherDecks, ...decks]);
+      const allStoredDecks = loadFromStorage<Deck[]>(DECKS_STORAGE_KEY, []);
+      // Filter out old decks of the current user
+      const otherUsersDecks = allStoredDecks.filter(deck => deck.userId !== userId);
+      // Add the updated decks of the current user
+      saveToStorage(DECKS_STORAGE_KEY, [...otherUsersDecks, ...decks]);
     }
   }, [decks, userId]);
 
   // Create a new deck
-  const createDeck = (name: string) => {
+  const createDeck = useCallback((name: string) => {
     const newDeck: Deck = {
       id: crypto.randomUUID(),
       name,
@@ -81,10 +83,10 @@ export const useDecks = (userId: string) => {
     setDecks(prev => [...prev, newDeck]);
     toast.success(`Deck "${name}" created`);
     return newDeck;
-  };
+  }, [userId]); // Added userId as it's used in newDeck
 
   // Update a deck
-  const updateDeck = (id: string, updates: Partial<Omit<Deck, 'id' | 'userId' | 'createdAt'>>) => {
+  const updateDeck = useCallback((id: string, updates: Partial<Omit<Deck, 'id' | 'userId' | 'createdAt'>>) => {
     setDecks(prev => 
       prev.map(deck => 
         deck.id === id ? { 
@@ -95,23 +97,25 @@ export const useDecks = (userId: string) => {
       )
     );
     toast.success(`Deck updated`);
-  };
+  }, []);
 
   // Delete a deck
-  const deleteDeck = (id: string) => {
+  const deleteDeck = useCallback((id: string, setAllCards: React.Dispatch<React.SetStateAction<Flashcard[]>>) => {
     // Also delete all cards in the deck
     const allCards = loadFromStorage<Flashcard[]>(CARDS_STORAGE_KEY, []);
     const remainingCards = allCards.filter(card => card.deckId !== id);
     saveToStorage(CARDS_STORAGE_KEY, remainingCards);
+    // Update the allCards state in useCards hook
+    setAllCards(remainingCards);
 
     setDecks(prev => prev.filter(deck => deck.id !== id));
     toast.success(`Deck deleted`);
-  };
+  }, []);
 
   // Get deck by id
-  const getDeck = (id: string): Deck | undefined => {
+  const getDeck = useCallback((id: string): Deck | undefined => {
     return decks.find(deck => deck.id === id);
-  };
+  }, [decks]);
 
   return {
     decks,
@@ -136,12 +140,12 @@ export const useCards = (userId: string) => {
   }, [allCards, userId]);
 
   // Get cards for a specific deck
-  const getCardsByDeck = (deckId: string): Flashcard[] => {
+  const getCardsByDeck = useCallback((deckId: string): Flashcard[] => {
     return allCards.filter(card => card.deckId === deckId);
-  };
+  }, [allCards]);
 
   // Create a new card
-  const createCard = (deckId: string, front: string, back: string): Flashcard => {
+  const createCard = useCallback((deckId: string, front: string, back: string): Flashcard => {
     const newCard: Flashcard = {
       id: crypto.randomUUID(),
       front,
@@ -152,10 +156,10 @@ export const useCards = (userId: string) => {
     setAllCards(prev => [...prev, newCard]);
     toast.success('Card created');
     return newCard;
-  };
+  }, []);
 
   // Update a card
-  const updateCard = (cardId: string, updates: Partial<Omit<Flashcard, 'id' | 'deckId'>>) => {
+  const updateCard = useCallback((cardId: string, updates: Partial<Omit<Flashcard, 'id' | 'deckId'>>) => {
     setAllCards(prev => 
       prev.map(card => 
         card.id === cardId ? { 
@@ -165,17 +169,17 @@ export const useCards = (userId: string) => {
       )
     );
     toast.success('Card updated');
-  };
+  }, []);
 
   // Delete a card
-  const deleteCard = (cardId: string) => {
+  const deleteCard = useCallback((cardId: string) => {
     setAllCards(prev => prev.filter(card => card.id !== cardId));
     toast.success('Card deleted');
-  };
+  }, []);
 
   // Update card review data
-  const updateCardReview = (cardId: string, quality: ReviewQuality): CardReviewData => {
-    let updatedReviewData: CardReviewData;
+  const updateCardReview = useCallback((cardId: string, quality: ReviewQuality): CardReviewData => {
+    let updatedReviewData: CardReviewData | undefined; // Ensure it can be undefined initially
 
     setAllCards(prev => 
       prev.map(card => {
@@ -190,19 +194,26 @@ export const useCards = (userId: string) => {
       })
     );
 
-    return updatedReviewData!;
-  };
+    if (!updatedReviewData) {
+      // This case should ideally not happen if cardId is valid and map function works
+      // For safety, return a default or throw an error, though processReview should always return
+      console.error("updatedReviewData was not set in updateCardReview");
+      // Fallback to a structure that won't break, though this indicates a logic flaw if reached
+      return processReview(null, quality); 
+    }
+    return updatedReviewData;
+  }, []);
 
   // Get all due cards for a deck
-  const getDueCards = (deckId: string): Flashcard[] => {
+  const getDueCards = useCallback((deckId: string): Flashcard[] => {
     const cards = getCardsByDeck(deckId);
     return cards.filter(card => isCardDue(card.reviewData));
-  };
+  }, [getCardsByDeck]);
 
   // Get card by ID
-  const getCard = (cardId: string): Flashcard | undefined => {
+  const getCard = useCallback((cardId: string): Flashcard | undefined => {
     return allCards.find(card => card.id === cardId);
-  };
+  }, [allCards]);
 
   return {
     allCards,
@@ -212,7 +223,8 @@ export const useCards = (userId: string) => {
     deleteCard,
     updateCardReview,
     getDueCards,
-    getCard
+    getCard,
+    setAllCards // Export setAllCards
   };
 };
 
@@ -246,7 +258,7 @@ export const useStudyStats = (userId: string) => {
   }, [userStats, userId]);
 
   // Start a new study session
-  const startStudySession = (deckId: string): StudySessionStats => {
+  const startStudySession = useCallback((deckId: string): StudySessionStats => {
     const newSession: StudySessionStats = {
       cardsStudied: 0,
       againCount: 0,
@@ -258,10 +270,10 @@ export const useStudyStats = (userId: string) => {
     };
     
     return newSession;
-  };
+  }, []);
 
   // Update session on card review
-  const recordCardReview = (
+  const recordCardReview = useCallback((
     deckId: string,
     session: StudySessionStats,
     quality: ReviewQuality,
@@ -292,14 +304,14 @@ export const useStudyStats = (userId: string) => {
       ...prev,
       totalReviews: prev.totalReviews + 1,
       totalStudyTime: prev.totalStudyTime + timeSpent,
-      reviewsToday: prev.reviewsToday + 1
+      reviewsToday: prev.reviewsToday + 1 // Assuming reviewsToday is reset daily elsewhere or this is fine
     }));
     
     return updatedSession;
-  };
+  }, [setUserStats]);
 
   // Complete a study session
-  const completeStudySession = (deckId: string, session: StudySessionStats) => {
+  const completeStudySession = useCallback((deckId: string, session: StudySessionStats) => {
     setStudySessions(prev => {
       const deckSessions = prev[deckId] || [];
       return {
@@ -309,10 +321,10 @@ export const useStudyStats = (userId: string) => {
     });
     
     toast.success('Study session completed!');
-  };
+  }, [setStudySessions]);
 
   // Calculate deck statistics
-  const calculateDeckStats = (deckId: string, cards: Flashcard[]): DeckStats => {
+  const calculateDeckStats = useCallback((deckId: string, cards: Flashcard[]): DeckStats => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     
@@ -352,10 +364,10 @@ export const useStudyStats = (userId: string) => {
       dueCount,
       lastStudied: lastStudiedSession?.startTime
     };
-  };
+  }, [studySessions]);
 
   // Get cards due in the next N days
-  const getUpcomingDueCards = (days: number = 7): Record<string, number> => {
+  const getUpcomingDueCards = useCallback((days: number = 7): Record<string, number> => {
     const result: Record<string, number> = {};
     const now = new Date();
     
@@ -383,7 +395,7 @@ export const useStudyStats = (userId: string) => {
     });
     
     return result;
-  };
+  }, []);
 
   return {
     studySessions,

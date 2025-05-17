@@ -9,6 +9,9 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
   },
+  optimizeDeps: {
+    exclude: ['zod'],
+  },
   plugins: [
     react(),
     mode === 'development' &&

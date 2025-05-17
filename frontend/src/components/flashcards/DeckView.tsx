@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -22,7 +21,7 @@ export const DeckView: React.FC<DeckViewProps> = ({ deckId }) => {
   const userId = user?.id || '';
   const navigate = useNavigate();
   const { decks, updateDeck, deleteDeck, getDeck } = useDecks(userId);
-  const { getCardsByDeck, getDueCards, createCard, deleteCard } = useCards(userId);
+  const { getCardsByDeck, getDueCards, createCard, deleteCard, setAllCards } = useCards(userId); // Added setAllCards
   const { calculateDeckStats } = useStudyStats(userId);
   
   const [isAddingCard, setIsAddingCard] = useState(false);
@@ -71,7 +70,7 @@ export const DeckView: React.FC<DeckViewProps> = ({ deckId }) => {
   };
 
   const handleDeleteDeck = () => {
-    deleteDeck(deckId);
+    deleteDeck(deckId, setAllCards); // Pass setAllCards to deleteDeck
     navigate('/dashboard');
   };
 
@@ -164,7 +163,7 @@ export const DeckView: React.FC<DeckViewProps> = ({ deckId }) => {
       
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Cards</h2>
-        <div className="space-x-2">
+        <div className="flex items-center space-x-2">
           <Dialog open={cardDialogOpen} onOpenChange={setCardDialogOpen}>
             <DialogTrigger asChild>
               <Button className="bg-brand-purple hover:bg-brand-purple/90">
@@ -338,7 +337,7 @@ const CardItem: React.FC<CardItemProps> = ({ card, onDelete }) => {
               variant="ghost" 
               size="icon" 
               className="text-gray-400 hover:text-destructive"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e: React.MouseEvent<HTMLButtonElement>) => e.stopPropagation()} // Prevent click from bubbling to CardItem's onClick
             >
               <Trash className="h-4 w-4" />
             </Button>
@@ -351,10 +350,10 @@ const CardItem: React.FC<CardItemProps> = ({ card, onDelete }) => {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel onClick={(e: React.MouseEvent<HTMLButtonElement>) => e.stopPropagation()}>Cancel</AlertDialogCancel>
               <AlertDialogAction 
-                onClick={(e) => {
-                  e.stopPropagation();
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                  e.stopPropagation(); // Prevent click from bubbling to CardItem's onClick
                   onDelete();
                 }}
                 className="bg-destructive hover:bg-destructive/90"

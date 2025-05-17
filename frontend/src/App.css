@@ -40,3 +40,105 @@
 .read-the-docs {
   color: #888;
 }
+
+/* Card flip animation */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.flashcard {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.6s;
+  cursor: pointer;
+}
+
+.flashcard.flipped {
+  transform: rotateY(180deg);
+}
+
+.card-face {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem; /* Assuming card has rounded corners */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.card-front {
+  background-color: white; /* Or your card's front background */
+}
+
+.card-back {
+  background-color: white; /* Or your card's back background */
+  transform: rotateY(180deg);
+}
+
+/* General fade-in animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+/* Animation for card selection from the list */
+@keyframes cardSelectPulse {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); } /* Assuming brand-purple is indigo-500 or similar */
+  70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(99, 102, 241, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+}
+
+.animate-card-select-pulse {
+  animation: cardSelectPulse 0.7s ease-out;
+}
+
+
+/* Enhanced button hover/active states for more interactivity */
+.interactive-button {
+  transition: transform 0.1s ease-out, box-shadow 0.1s ease-out;
+}
+
+.interactive-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.interactive-button:active {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Completion screen animations */
+@keyframes confettiBurst {
+  0% { transform: scale(0) rotate(0deg); opacity: 0; }
+  50% { transform: scale(1.2) rotate(360deg); opacity: 1; }
+  100% { transform: scale(1) rotate(720deg); opacity: 1; }
+}
+
+.animate-confetti-burst {
+  animation: confettiBurst 0.8s ease-out forwards;
+}
+
+@keyframes slideUpFadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-up-fade-in {
+  animation: slideUpFadeIn 0.5s ease-out forwards;
+}
+
+/* Staggered animation for summary items */
+.summary-item {
+  opacity: 0;
+  animation: slideUpFadeIn 0.5s ease-out forwards;
+}
