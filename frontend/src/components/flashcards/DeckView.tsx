@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { useDecks, useCards, useStudyStats } from '@/store/flashcardStore';
+import { useDeckList } from '@/context/DeckListContext';
+import { useFlashcards, Flashcard } from '@/context/FlashcardContext';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -10,7 +11,15 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Edit, Trash, Plus, Calendar, Book, ArrowRight } from 'lucide-react';
-import { Deck, Flashcard, DeckStats } from '@/types/flashcard';
+
+// Define DeckStats interface
+interface DeckStats {
+  total: number;
+  new: number;
+  learning: number;
+  review: number;
+  due: number;
+}
 
 interface DeckViewProps {
   deckId: string;
@@ -18,11 +27,19 @@ interface DeckViewProps {
 
 export const DeckView: React.FC<DeckViewProps> = ({ deckId }) => {
   const { user } = useAuth();
-  const userId = user?.id || '';
   const navigate = useNavigate();
-  const { decks, updateDeck, deleteDeck, getDeck } = useDecks(userId);
-  const { getCardsByDeck, getDueCards, createCard, deleteCard, setAllCards } = useCards(userId); // Added setAllCards
-  const { calculateDeckStats } = useStudyStats(userId);
+  const { updateDeck, deleteDeck, getDeckById } = useDeckList();
+  const { 
+    flashcards, 
+    dueFlashcards, 
+    loading: flashcardsLoading, 
+    error: flashcardsError, 
+    getFlashcardsByDeck, 
+    getDueFlashcards, 
+    createFlashcard, 
+    updateFlashcard, 
+    deleteFlashcard 
+  } = useFlashcards();
   
   const [isAddingCard, setIsAddingCard] = useState(false);
   const [cardFront, setCardFront] = useState('');
@@ -31,10 +48,48 @@ export const DeckView: React.FC<DeckViewProps> = ({ deckId }) => {
   const [isEditingDeck, setIsEditingDeck] = useState(false);
   const [cardDialogOpen, setCardDialogOpen] = useState(false);
   const [deckDialogOpen, setDeckDialogOpen] = useState(false);
+  const [deck, setDeck] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<DeckStats>({ total: 0, new: 0, learning: 0, review: 0, due: 0 });
 
-  const deck = getDeck(deckId);
-  const cards = getCardsByDeck(deckId);
-  const dueCards = getDueCards(deckId);
+  // Fetch deck data
+  useEffect(() => {
+    const fetchDeck = async () => {
+      try {
+        const deckData = await getDeckById(deckId);
+        setDeck(deckData);
+      } catch (err) {
+        console.error('Error fetching deck:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchDeck();
+  }, [deckId, getDeckById]);
+
+  // Fetch flashcards when deck is loaded
+  useEffect(() => {
+    if (deckId) {
+      getFlashcardsByDeck(deckId);
+      getDueFlashcards(deckId);
+    }
+  }, [deckId, getFlashcardsByDeck, getDueFlashcards]);
+
+  // Calculate stats from flashcards
+  useEffect(() => {
+    if (flashcards.length > 0) {
+      const now = new Date();
+      const newStats: DeckStats = {
+        total: flashcards.length,
+        new: flashcards.filter(card => card.repetition === 0).length,
+        learning: flashcards.filter(card => card.repetition > 0 && card.repetition < 4).length,
+        review: flashcards.filter(card => card.repetition >= 4).length,
+        due: dueFlashcards.length
+      };
+      setStats(newStats);
+    }
+  }, [flashcards, dueFlashcards]);
   
   if (!deck) {
     return (
@@ -44,34 +99,54 @@ export const DeckView: React.FC<DeckViewProps> = ({ deckId }) => {
       </div>
     );
   }
-
-  const stats: DeckStats = calculateDeckStats(deckId, cards);
   
-  const handleAddCard = (e: React.FormEvent) => {
+  const handleAddCard = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cardFront.trim() || !cardBack.trim()) return;
     
     setIsAddingCard(true);
-    createCard(deckId, cardFront, cardBack);
-    setCardFront('');
-    setCardBack('');
-    setCardDialogOpen(false);
-    setIsAddingCard(false);
+    try {
+      await createFlashcard(deckId, cardFront, cardBack);
+      setCardFront('');
+      setCardBack('');
+      setCardDialogOpen(false);
+      getFlashcardsByDeck(deckId);
+      getDueFlashcards(deckId);
+    } catch (err) {
+      console.error('Error adding flashcard:', err);
+    } finally {
+      setIsAddingCard(false);
+    }
   };
 
-  const handleUpdateDeck = (e: React.FormEvent) => {
+  const handleUpdateDeck = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editDeckName.trim()) return;
     
     setIsEditingDeck(true);
-    updateDeck(deckId, { name: editDeckName });
-    setDeckDialogOpen(false);
-    setIsEditingDeck(false);
+    try {
+      const updatedDeck = await updateDeck(deckId, { name: editDeckName });
+      if (updatedDeck) {
+        setDeck(updatedDeck);
+      }
+      setDeckDialogOpen(false);
+    } catch (err) {
+      console.error('Error updating deck:', err);
+    } finally {
+      setIsEditingDeck(false);
+    }
   };
 
-  const handleDeleteDeck = () => {
-    deleteDeck(deckId, setAllCards); // Pass setAllCards to deleteDeck
-    navigate('/dashboard');
+  const handleDeleteDeck = async () => {
+    try {
+      const success = await deleteDeck(deckId);
+      if (success) {
+        // Navigate back to dashboard after deletion
+        navigate('/dashboard');
+      }
+    } catch (err) {
+      console.error('Error deleting deck:', err);
+    }
   };
 
   const openEditDeckDialog = () => {
@@ -81,34 +156,48 @@ export const DeckView: React.FC<DeckViewProps> = ({ deckId }) => {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">{deck.name}</h1>
-        <div className="flex space-x-2">
-          <Button 
-            variant="outline" 
-            size="icon" 
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold">{deck.name}</h1>
+          <p className="text-muted-foreground">
+            {stats.total} cards • {stats.due} due today
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex items-center gap-1"
             onClick={openEditDeckDialog}
-            className="hover:text-brand-purple"
           >
             <Edit className="h-4 w-4" />
+            Edit
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="outline" size="icon" className="hover:text-destructive">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-1 text-destructive hover:text-destructive"
+              >
                 <Trash className="h-4 w-4" />
+                Delete
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete Deck</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Are you sure you want to delete this deck? This action cannot be undone
-                  and all cards in this deck will be permanently deleted.
+                  Are you sure you want to delete this deck? This will also delete all flashcards in this deck.
+                  This action cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDeleteDeck} className="bg-destructive hover:bg-destructive/90">
+                <AlertDialogAction
+                  onClick={handleDeleteDeck}
+                  className="bg-destructive hover:bg-destructive/90"
+                >
                   Delete
                 </AlertDialogAction>
               </AlertDialogFooter>
@@ -116,156 +205,152 @@ export const DeckView: React.FC<DeckViewProps> = ({ deckId }) => {
           </AlertDialog>
         </div>
       </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="bg-white hover:shadow-md transition-all duration-300">
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-2">
-              <Book className="h-5 w-5 text-brand-purple" />
-              <h3 className="text-lg font-medium">Total Cards</h3>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <p className="text-3xl font-bold text-brand-purple">{stats.total}</p>
+              <p className="text-sm text-muted-foreground">Total Cards</p>
             </div>
-            <p className="text-3xl font-bold mt-2">{stats.totalCards}</p>
           </CardContent>
         </Card>
-        
-        <Card className="bg-white hover:shadow-md transition-all duration-300">
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-2">
-              <Calendar className="h-5 w-5 text-brand-blue" />
-              <h3 className="text-lg font-medium">Due Today</h3>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <p className="text-3xl font-bold text-brand-purple">{stats.due}</p>
+              <p className="text-sm text-muted-foreground">Due Today</p>
             </div>
-            <p className="text-3xl font-bold mt-2">{stats.dueCount}</p>
           </CardContent>
         </Card>
-        
-        <Card className="bg-white hover:shadow-md transition-all duration-300">
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-2">
-              <ArrowRight className="h-5 w-5 text-brand-green" />
-              <h3 className="text-lg font-medium">Learning</h3>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <p className="text-3xl font-bold text-brand-purple">{stats.new}</p>
+              <p className="text-sm text-muted-foreground">New Cards</p>
             </div>
-            <p className="text-3xl font-bold mt-2">{stats.learningCount}</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-white hover:shadow-md transition-all duration-300">
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-2">
-              <div className="rounded-full bg-brand-light-purple p-1">
-                <ArrowRight className="h-4 w-4 text-brand-purple" />
-              </div>
-              <h3 className="text-lg font-medium">Mature</h3>
-            </div>
-            <p className="text-3xl font-bold mt-2">{stats.matureCount}</p>
           </CardContent>
         </Card>
       </div>
-      
+
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Cards</h2>
-        <div className="flex items-center space-x-2">
-          <Dialog open={cardDialogOpen} onOpenChange={setCardDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-brand-purple hover:bg-brand-purple/90">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Card
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add New Flashcard</DialogTitle>
-                <DialogDescription>
-                  Create a new flashcard for your deck. Make sure the front 
-                  contains the question/prompt and the back contains the answer.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleAddCard}>
-                <div className="space-y-4 mt-4">
-                  <div className="space-y-2">
-                    <label htmlFor="front" className="text-sm font-medium">Front (Question/Prompt)</label>
-                    <Textarea
-                      id="front"
-                      value={cardFront}
-                      onChange={(e) => setCardFront(e.target.value)}
-                      placeholder="What's the capital of France?"
-                      className="min-h-[100px]"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label htmlFor="back" className="text-sm font-medium">Back (Answer)</label>
-                    <Textarea
-                      id="back"
-                      value={cardBack}
-                      onChange={(e) => setCardBack(e.target.value)}
-                      placeholder="Paris"
-                      className="min-h-[100px]"
-                    />
-                  </div>
-                </div>
-                <DialogFooter className="mt-6">
-                  <Button 
-                    type="submit" 
-                    disabled={isAddingCard || !cardFront.trim() || !cardBack.trim()}
-                    className="bg-brand-purple hover:bg-brand-purple/90"
-                  >
-                    {isAddingCard ? 'Adding...' : 'Add Card'}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-          
-          <Button 
-            onClick={() => navigate(`/study/${deckId}`)} 
-            disabled={cards.length === 0}
-            className="bg-brand-green hover:bg-brand-green/90"
+        <h2 className="text-xl font-semibold">Flashcards</h2>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="flex items-center gap-1"
+            onClick={() => setCardDialogOpen(true)}
           >
-            Study Now
+            <Plus className="h-4 w-4" />
+            Add Card
           </Button>
+          {stats.due > 0 && (
+            <Button
+              className="flex items-center gap-1 bg-brand-purple hover:bg-brand-purple/90"
+              onClick={() => navigate(`/study/${deckId}`)}
+            >
+              <Book className="h-4 w-4" />
+              Study Now
+            </Button>
+          )}
         </div>
       </div>
-      
-      {cards.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-8 bg-gray-50 rounded-lg">
-          <div className="text-center max-w-md animate-bounce-light">
-            <Book className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-xl font-medium mb-2">No cards yet</h3>
-            <p className="text-muted-foreground mb-6">
-              Start adding flashcards to this deck to begin studying.
-            </p>
-            <Button onClick={() => setCardDialogOpen(true)} className="bg-brand-purple hover:bg-brand-purple/90">
-              <Plus className="mr-2 h-4 w-4" />
-              Add Your First Card
-            </Button>
-          </div>
+
+      <Dialog open={cardDialogOpen} onOpenChange={setCardDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Flashcard</DialogTitle>
+            <DialogDescription>
+              Create a new flashcard for your deck.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAddCard}>
+            <div className="space-y-4 mt-2">
+              <div>
+                <label htmlFor="front" className="block text-sm font-medium mb-1">
+                  Front
+                </label>
+                <Textarea
+                  id="front"
+                  value={cardFront}
+                  onChange={(e) => setCardFront(e.target.value)}
+                  placeholder="Question or term"
+                  className="resize-none"
+                  rows={3}
+                />
+              </div>
+              <div>
+                <label htmlFor="back" className="block text-sm font-medium mb-1">
+                  Back
+                </label>
+                <Textarea
+                  id="back"
+                  value={cardBack}
+                  onChange={(e) => setCardBack(e.target.value)}
+                  placeholder="Answer or definition"
+                  className="resize-none"
+                  rows={3}
+                />
+              </div>
+            </div>
+            <DialogFooter className="mt-4">
+              <Button
+                type="submit"
+                disabled={isAddingCard || !cardFront.trim() || !cardBack.trim()}
+                className="bg-brand-purple hover:bg-brand-purple/90"
+              >
+                {isAddingCard ? 'Adding...' : 'Add Card'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {flashcardsLoading && flashcards.length === 0 ? (
+        <div className="flex justify-center p-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-purple"></div>
         </div>
       ) : (
         <Tabs defaultValue="all">
           <TabsList>
-            <TabsTrigger value="all">All Cards ({cards.length})</TabsTrigger>
-            <TabsTrigger value="due">Due Today ({dueCards.length})</TabsTrigger>
+            <TabsTrigger value="all">All Cards ({flashcards.length})</TabsTrigger>
+            <TabsTrigger value="due">Due Today ({dueFlashcards.length})</TabsTrigger>
           </TabsList>
           <TabsContent value="all" className="mt-6">
             <div className="space-y-4">
-              {cards.map((card: Flashcard) => (
-                <CardItem 
-                  key={card.id} 
-                  card={card} 
-                  onDelete={() => deleteCard(card.id)} 
-                />
-              ))}
+              {flashcards.length === 0 ? (
+                <div className="text-center p-8 border rounded-lg bg-gray-50">
+                  <p className="text-gray-500 mb-4">No flashcards yet.</p>
+                  <Button onClick={() => setCardDialogOpen(true)} className="flex items-center gap-2 mx-auto">
+                    <Plus size={16} /> Add your first card
+                  </Button>
+                </div>
+              ) : (
+                flashcards.map((card) => (
+                  <CardItem 
+                    key={card._id} 
+                    card={card} 
+                    onDelete={() => deleteFlashcard(card._id)} 
+                  />
+                ))
+              )}
             </div>
           </TabsContent>
           <TabsContent value="due" className="mt-6">
             <div className="space-y-4">
-              {dueCards.length === 0 ? (
-                <p className="text-muted-foreground text-center p-8">No cards due for review today.</p>
+              {dueFlashcards.length === 0 ? (
+                <div className="text-center p-8 border rounded-lg bg-gray-50">
+                  <p className="text-gray-500 mb-4">No cards due for review.</p>
+                  <Button onClick={() => navigate(`/study/${deckId}`)} className="flex items-center gap-2 mx-auto">
+                    <Book size={16} /> Study new cards
+                  </Button>
+                </div>
               ) : (
-                dueCards.map((card: Flashcard) => (
+                dueFlashcards.map((card) => (
                   <CardItem 
-                    key={card.id} 
+                    key={card._id} 
                     card={card} 
-                    onDelete={() => deleteCard(card.id)} 
+                    onDelete={() => deleteFlashcard(card._id)} 
                   />
                 ))
               )}
@@ -365,16 +450,16 @@ const CardItem: React.FC<CardItemProps> = ({ card, onDelete }) => {
         </AlertDialog>
       </div>
       
-      {card.reviewData && (
-        <div className="mt-4 flex items-center text-xs text-muted-foreground">
-          <Calendar className="h-3 w-3 mr-1" />
-          <span>
-            {card.reviewData.repetitions > 0
-              ? `Next review: ${card.reviewData.dueDate.toLocaleDateString()}`
-              : 'New card'}
-          </span>
-        </div>
-      )}
+      <div className="mt-4 flex items-center text-xs text-muted-foreground">
+        <Calendar className="h-3 w-3 mr-1" />
+        <span>
+          {card.repetition > 0
+            ? `Next review: ${new Date(card.dueDate).toLocaleDateString()}`
+            : 'New card'}
+        </span>
+      </div>
     </div>
   );
 };
+
+export default DeckView;

@@ -23,6 +23,15 @@ export interface DeckListContextType {
 
 export const DeckListContext = createContext<DeckListContextType | undefined>(undefined);
 
+// Custom hook to use the DeckList context
+export const useDeckList = () => {
+  const context = useContext(DeckListContext);
+  if (context === undefined) {
+    throw new Error('useDeckList must be used within a DeckListProvider');
+  }
+  return context;
+};
+
 interface DeckListProviderProps {
   children: ReactNode;
 }
@@ -46,7 +55,7 @@ export const DeckListProvider: React.FC<DeckListProviderProps> = ({ children }) 
     try {
       const response = await fetch(`${API_BASE_URL}/decks`, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'x-auth-token': token,
         },
       });
       if (!response.ok) {
@@ -77,7 +86,7 @@ export const DeckListProvider: React.FC<DeckListProviderProps> = ({ children }) 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          'x-auth-token': token,
         },
         body: JSON.stringify({ name, description }),
       });
@@ -110,7 +119,7 @@ export const DeckListProvider: React.FC<DeckListProviderProps> = ({ children }) 
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          'x-auth-token': token,
         },
         body: JSON.stringify(updates),
       });
@@ -144,7 +153,7 @@ export const DeckListProvider: React.FC<DeckListProviderProps> = ({ children }) 
       const response = await fetch(`${API_BASE_URL}/decks/${deckId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'x-auth-token': token,
         },
       });
       if (!response.ok) {
@@ -176,7 +185,7 @@ export const DeckListProvider: React.FC<DeckListProviderProps> = ({ children }) 
     try {
       const response = await fetch(`${API_BASE_URL}/decks/${deckId}`, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'x-auth-token': token,
         },
       });
       if (!response.ok) {

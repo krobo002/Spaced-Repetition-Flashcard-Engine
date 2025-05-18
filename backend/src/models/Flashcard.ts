@@ -25,10 +25,12 @@ const FlashcardSchema: Schema = new Schema({
   dueDate: { type: Date, default: Date.now }, 
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
+}, {
+  collection: 'Flashcards' // Explicitly set the collection name here
 });
 
 // Middleware to update `updatedAt` field before saving
-FlashcardSchema.pre<IFlashcard>('save', function (next) {
+FlashcardSchema.pre('save', function(this: IFlashcard, next: Function) {
   this.updatedAt = new Date();
   next();
 });
