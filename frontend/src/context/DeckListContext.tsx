@@ -42,7 +42,7 @@ export const DeckListProvider: React.FC<DeckListProviderProps> = ({ children }) 
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL}/api/auth`;
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api';
 
   const fetchDecks = React.useCallback(async () => {
     const token = user?.token;
